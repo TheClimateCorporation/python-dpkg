@@ -18,6 +18,17 @@ Currently only tested on Python 2.6 and 2.7.  Should run on any python2
 distribution that can install the [arpy](https://pypi.python.org/pypi/arpy/)
 library.
    
+Installing
+==========
+
+Install the 'pydpkg' package from [PyPi](https://pypi.python.org) using
+the [pip](https://packaging.python.org/installing/) tool:
+
+    $ pip install pydpkg
+    Collecting pydpkg
+      Downloading pydpkg-1.0-py2-none-any.whl
+      Installing collected packages: pydpkg
+      Successfully installed pydpkg-1.0
 
 Usage
 =====
