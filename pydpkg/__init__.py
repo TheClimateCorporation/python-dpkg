@@ -1,14 +1,19 @@
+from __future__ import absolute_import
 
-# stdlib imports
+import io
 import os
 import tarfile
 
-from StringIO import StringIO
-from rfc822 import Message
 from gzip import GzipFile
+
+try:
+    from email import message_from_binary_file as Message
+except ImportError:
+    from rfc822 import Message
 
 # pypi imports
 from arpy import Archive
+import six
 
 REQUIRED_HEADERS = ('package', 'version', 'architecture')
 
@@ -38,80 +43,73 @@ class Dpkg(object):
     """Class allowing import and manipulation of a debian package file."""
 
     def __init__(self, filename=None):
-        self.headers = {}
-        if not isinstance(filename, basestring):
+
+        if not isinstance(filename, six.string_types):
             raise DpkgError('filename argument must be a string')
+
         if not os.path.isfile(filename):
-            raise DpkgError('filename "%s" does not exist', filename)
-        self.control_str, self._control_headers = self._process_dpkg_file(
-            filename)
-        for k in self._control_headers.keys():
-            self.headers[k] = self._control_headers[k]
+            raise DpkgError('filename "%s" does not exist' % filename)
+
+        self.control_str, self.headers = self._process_dpkg_file(filename)
 
     def __repr__(self):
-        return self.control_str
+        return repr(self.control_str)
+
+    def _str__(self):
+        return six.text_type(self.control_str)
 
     def get_header(self, header):
         """ case-independent query for a control message header value """
         return self.headers.get(header.lower(), '')
 
     def compare_version_with(self, version_str):
-        return Dpkg.compare_versions(
-            self.get_header('version'),
-            version_str)
+        return Dpkg.compare_versions(self.get_header('version'), version_str)
 
     def _force_encoding(self, obj, encoding='utf-8'):
-        if isinstance(obj, basestring):
-            if not isinstance(obj, unicode):
-                obj = unicode(obj, encoding)
+        if isinstance(obj, six.string_types):
+            if not isinstance(obj, six.text_type):
+                obj = six.text_type(obj, encoding)
         return obj
 
     def _process_dpkg_file(self, filename):
         dpkg = Archive(filename)
         dpkg.read_all_headers()
 
-        if 'control.tar.gz' not in dpkg.archived_files:
-            raise DpkgMissingControlGzipFile(
-                'Corrupt dpkg file: no control.tar.gz file in ar archive.')
-
-        control_tgz = dpkg.archived_files['control.tar.gz']
+        try:
+            control_tgz = dpkg.archived_files['control.tar.gz'.encode('utf-8')]
+        except KeyError:
+            raise DpkgMissingControlGzipFile('Corrupt dpkg file: no control.tar.gz file in ar archive.')
 
         # have to do an intermediate step because gzipfile doesn't support seek
         # from end; luckily control tars are tiny
-        control_tar_intermediate = GzipFile(fileobj=control_tgz, mode='rb')
-        tar_data = control_tar_intermediate.read()
-        sio = StringIO(tar_data)
-        control_tar = tarfile.open(fileobj=sio)
+        with GzipFile(fileobj=control_tgz) as gz:
+            with tarfile.open(fileobj=io.BytesIO(gz.read())) as tar:
 
-        # pathname in the tar could be ./control, or just control
-        # (there would never be two control files...right?)
-        tar_members = [os.path.basename(x.name)
-                       for x in control_tar.getmembers()]
-        if 'control' not in tar_members:
-            raise DpkgMissingControlFile(
-                'Corrupt dpkg file: no control file in control.tar.gz.')
-        control_idx = tar_members.index('control')
+                # pathname in the tar could be ./control, or just control
+                # (there would never be two control files...right?)
+                tar_members = [os.path.basename(x.name) for x in tar.getmembers()]
 
-        # at last!
-        control_file = control_tar.extractfile(
-            control_tar.getmembers()[control_idx])
+                if 'control' not in tar_members:
+                    raise DpkgMissingControlFile('Corrupt dpkg file: no control file in control.tar.gz.')
 
-        # beware: dpkg will happily let people drop random encodings into the
-        # control file
-        control_str = self._force_encoding(control_file.read())
+                control_idx = tar_members.index('control')
 
-        # now build the dict
-        control_file.seek(0)
-        control_headers = Message(control_file)
+                # at last!
+                control_fh = tar.extractfile(tar.getmembers()[control_idx])
+
+                # beware: dpkg will happily let people drop random encodings into the control file
+                control_str = self._force_encoding(control_fh.read())
+
+                # now build the dict
+                control_fh.seek(0)
+                control_headers = Message(control_fh)
 
         for header in REQUIRED_HEADERS:
-            if header not in control_headers:
-                raise DpkgMissingRequiredHeaderError(
-                    'Corrupt control section; header: "%s" not found' % header)
+            if header not in list(map(str.lower, control_headers.keys())):
+                raise DpkgMissingRequiredHeaderError('Corrupt control section; header: "%s" not found' % header)
 
-        for header in control_headers:
-            control_headers[header] = self._force_encoding(
-                control_headers[header])
+        for header, value in control_headers.items():
+            control_headers[header] = self._force_encoding(value)
 
         return control_str, control_headers
 
@@ -132,8 +130,8 @@ class Dpkg(object):
         except ValueError:
             raise DpkgVersionError(
                 'Corrupt dpkg version %s: epochs can only be ints, and '
-                'epochless versions cannot use the colon character.' %
-                version_str)
+                'epochless versions cannot use the colon character.' % version_str
+            )
 
         return epoch, version_str[e_index + 1:]
 
@@ -142,13 +140,14 @@ class Dpkg(object):
         """Given a version string that could potentially contain both an upstream
         revision and a debian revision, return a tuple of both.  If there is no
         debian revision, return 0 as the second tuple element."""
+
         try:
             d_index = version_str.rindex('-')
         except ValueError:
             # no hyphens means no debian version, also valid.
             return version_str, '0'
 
-        return version_str[0:d_index], version_str[d_index+1:]
+        return version_str[0:d_index], version_str[d_index + 1:]
 
     @staticmethod
     def split_full_version(version_str):
@@ -158,34 +157,36 @@ class Dpkg(object):
 
     @staticmethod
     def get_alphas(revision_str):
-        """Return a tuple of the first non-digit characters of a revision (which
-        may be empty) and the remaining characters."""
+        """Return a tuple of the first non-digit characters of a revision (which may be empty) and the remaining characters."""
 
         # get the index of the first digit
         for i, char in enumerate(revision_str):
+
             if char.isdigit():
                 if i == 0:
                     return '', revision_str
-                else:
-                    return revision_str[0:i], revision_str[i:]
+
+                return revision_str[0:i], revision_str[i:]
+
         # string is entirely alphas
         return revision_str, ''
 
     @staticmethod
     def get_digits(revision_str):
-        """Return a tuple of the first integer characters of a revision (which
-        may be empty) and the remains."""
+        """Return a tuple of the first integer characters of a revision (which may be empty) and the remains."""
 
         if not revision_str:
             return 0, ''
 
         # get the index of the first non-digit
         for i, char in enumerate(revision_str):
+
             if not char.isdigit():
                 if i == 0:
                     return 0, revision_str
-                else:
-                    return int(revision_str[0:i]), revision_str[i:]
+
+                return int(revision_str[0:i]), revision_str[i:]
+
         # string is entirely digits
         return int(revision_str), ''
 
@@ -218,24 +219,31 @@ class Dpkg(object):
             return 0
         try:
             for i, char in enumerate(a):
+
                 if char == b[i]:
                     continue
-                # "a tilde sorts before anything, even the end of a part"
-                # (emptyness)
+
+                # "a tilde sorts before anything, even the end of a part" (emptyness)
                 if char == '~':
                     return -1
+
                 if b[i] == '~':
                     return 1
+
                 # "all the letters sort earlier than all the non-letters"
                 if char.isalpha() and not b[i].isalpha():
                     return -1
+
                 if not char.isalpha() and b[i].isalpha():
                     return 1
+
                 # otherwise lexical sort
                 if ord(char) > ord(b[i]):
                     return 1
+
                 if ord(char) < ord(b[i]):
                     return -1
+
         except IndexError:
             # a is longer than b but otherwise equal, hence greater
             # ...except for goddamn tildes
@@ -243,6 +251,7 @@ class Dpkg(object):
                 return -1
             else:
                 return 1
+
         # if we get here, a is shorter than b but otherwise equal, hence lesser
         # ...except for goddamn tildes
         if b[len(a)] == '~':
@@ -265,26 +274,30 @@ class Dpkg(object):
 
         try:
             for i, item in enumerate(list1):
+
                 # just in case
-                if type(item) != type(list2[i]):
-                    raise DpkgVersionError(
-                        'Cannot compare %s to %s, something has gone horribly '
-                        'awry.' % (item, list2[i]))
+                if not isinstance(item, list2[i].__class__):
+                    raise DpkgVersionError('Cannot compare %s to %s, something has gone horribly ' 'awry.' % (item, list2[i]))
+
                 # if the items are equal, next
                 if item == list2[i]:
                     continue
+
                 # numeric comparison
-                if type(item) == int:
+                if isinstance(item, int):
                     if item > list2[i]:
                         return 1
+
                     if item < list2[i]:
                         return -1
-                else:
-                    # string comparison
-                    return Dpkg.dstringcmp(item, list2[i])
+
+                # string comparison
+                return Dpkg.dstringcmp(item, list2[i])
+
         except IndexError:
             # rev1 is longer than rev2 but otherwise equal, hence greater
             return 1
+
         # rev1 is shorter than rev2 but otherwise equal, hence lesser
         return -1
 
