@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import unittest
+from functools import cmp_to_key
 
 from pydpkg import Dpkg, DpkgVersionError
 
@@ -65,8 +66,9 @@ class DpkgTest(unittest.TestCase):
         # taken from
         # http://www.debian.org/doc/debian-policy/ch-controlfields.html#s-f-Version
         self.assertEqual(
-                sorted(['a', '', '~', '~~a', '~~'], cmp=Dpkg.dstringcmp),
-                ['~~', '~~a', '~', '', 'a'])
+            sorted(['a', '', '~', '~~a', '~~'],
+                   key=cmp_to_key(Dpkg.dstringcmp)),
+            ['~~', '~~a', '~', '', 'a'])
 
     def test_compare_revision_strings(self):
         # note that these are testing a single revision string, not the full

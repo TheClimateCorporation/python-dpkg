@@ -1,35 +1,55 @@
 
+""" pydpkg: tools for inspecting dpkg archive files in python
+            without any dependency on libapt
+"""
+
+from __future__ import absolute_import
+
 # stdlib imports
+import io
+import logging
 import os
 import tarfile
-
-from StringIO import StringIO
-from rfc822 import Message
 from gzip import GzipFile
+from hashlib import md5, sha1, sha256
+from email import message_from_string as Message
 
 # pypi imports
+import six
 from arpy import Archive
 
 REQUIRED_HEADERS = ('package', 'version', 'architecture')
 
+logging.basicConfig()
+
 
 class DpkgError(Exception):
+
+    """Base error class for pydpkg"""
     pass
 
 
 class DpkgVersionError(Exception):
+
+    """Corrupt or unparseable version string"""
     pass
 
 
 class DpkgMissingControlFile(DpkgError):
+
+    """No control file found in control.tar.gz"""
     pass
 
 
 class DpkgMissingControlGzipFile(DpkgError):
+
+    """No control.tar.gz file found in dpkg file"""
     pass
 
 
 class DpkgMissingRequiredHeaderError(DpkgError):
+
+    """Corrupt package missing a required header"""
     pass
 
 
@@ -37,83 +57,160 @@ class Dpkg(object):
 
     """Class allowing import and manipulation of a debian package file."""
 
-    def __init__(self, filename=None):
-        self.headers = {}
-        if not isinstance(filename, basestring):
+    def __init__(self, filename=None, ignore_missing=False, logger=None):
+        self.filename = os.path.expanduser(filename)
+        self.ignore_missing = ignore_missing
+        if not isinstance(self.filename, six.string_types):
             raise DpkgError('filename argument must be a string')
-        if not os.path.isfile(filename):
+        if not os.path.isfile(self.filename):
             raise DpkgError('filename "%s" does not exist', filename)
-        self.control_str, self._control_headers = self._process_dpkg_file(
-            filename)
-        for k in self._control_headers.keys():
-            self.headers[k] = self._control_headers[k]
+        self._log = logger or logging.getLogger(__name__)
+        self._fileinfo = None
+        self._control_str = None
+        self._headers = None
+        self._message = None
 
     def __repr__(self):
-        return self.control_str
+        return repr(self.control_str)
+
+    def __str__(self):
+        return six.text_type(self.control_str)
+
+    @property
+    def message(self):
+        """Return an email.Message object containing the package control
+        structure."""
+        if not self._message:
+            self._message = self._process_dpkg_file(self.filename)
+        return self._message
+
+    @property
+    def control_str(self):
+        """Return the control message as a string"""
+        if not self._control_str:
+            self._control_str = self.message.as_string()
+        return self._control_str
+
+    @property
+    def headers(self):
+        """Return the control message headers as a dict"""
+        if not self._headers:
+            self._headers = dict(self.message.items())
+        return self._headers
+
+    @property
+    def fileinfo(self):
+        """Return a dictionary containing md5/sha1/sha256 checksums
+        and the size in bytes of our target file."""
+        if not self._fileinfo:
+            h_md5 = md5()
+            h_sha1 = sha1()
+            h_sha256 = sha256()
+            with open(self.filename, 'rb') as dpkg_file:
+                for chunk in iter(lambda: dpkg_file.read(128), b''):
+                    h_md5.update(chunk)
+                    h_sha1.update(chunk)
+                    h_sha256.update(chunk)
+            self._fileinfo = {
+                'md5':      h_md5.hexdigest(),
+                'sha1':     h_sha1.hexdigest(),
+                'sha256':   h_sha256.hexdigest(),
+                'filesize': os.path.getsize(self.filename)
+            }
+        return self._fileinfo
+
+    @property
+    def md5(self):
+        """Return the md5 hash of our target file"""
+        return self.fileinfo['md5']
+
+    @property
+    def sha1(self):
+        """Return the sha1 hash of our target file"""
+        return self.fileinfo['sha1']
+
+    @property
+    def sha256(self):
+        """Return the sha256 hash of our target file"""
+        return self.fileinfo['sha256']
+
+    @property
+    def filesize(self):
+        """Return the size of our target file"""
+        return self.fileinfo['filesize']
 
     def get_header(self, header):
         """ case-independent query for a control message header value """
         return self.headers.get(header.lower(), '')
 
     def compare_version_with(self, version_str):
-        return Dpkg.compare_versions(
-            self.get_header('version'),
-            version_str)
+        """Compare my version to an arbitrary version"""
+        return Dpkg.compare_versions(self.get_header('version'), version_str)
 
-    def _force_encoding(self, obj, encoding='utf-8'):
-        if isinstance(obj, basestring):
-            if not isinstance(obj, unicode):
-                obj = unicode(obj, encoding)
+    @staticmethod
+    def _force_encoding(obj, encoding='utf-8'):
+        """Enforce uniform text encoding"""
+        if isinstance(obj, six.string_types):
+            if not isinstance(obj, six.text_type):
+                obj = six.text_type(obj, encoding)
         return obj
 
     def _process_dpkg_file(self, filename):
-        dpkg = Archive(filename)
-        dpkg.read_all_headers()
-
-        if 'control.tar.gz' not in dpkg.archived_files:
+        dpkg_archive = Archive(filename)
+        dpkg_archive.read_all_headers()
+        try:
+            control_tgz = dpkg_archive.archived_files[b'control.tar.gz']
+        except KeyError:
             raise DpkgMissingControlGzipFile(
                 'Corrupt dpkg file: no control.tar.gz file in ar archive.')
+        self._log.debug('found controlgz: %s', control_tgz)
 
-        control_tgz = dpkg.archived_files['control.tar.gz']
-
-        # have to do an intermediate step because gzipfile doesn't support seek
+        # have to pass through BytesIO because gzipfile doesn't support seek
         # from end; luckily control tars are tiny
-        control_tar_intermediate = GzipFile(fileobj=control_tgz, mode='rb')
-        tar_data = control_tar_intermediate.read()
-        sio = StringIO(tar_data)
-        control_tar = tarfile.open(fileobj=sio)
+        with GzipFile(fileobj=control_tgz) as gzf:
+            self._log.debug('opened gzip file: %s', gzf)
+            with tarfile.open(fileobj=io.BytesIO(gzf.read())) as control_tar:
+                self._log.debug('opened tar file: %s', control_tar)
+                # pathname in the tar could be ./control, or just control
+                # (there would never be two control files...right?)
+                tar_members = [
+                    os.path.basename(x.name) for x in control_tar.getmembers()]
+                self._log.debug('got tar members: %s', tar_members)
+                if 'control' not in tar_members:
+                    raise DpkgMissingControlFile(
+                        'Corrupt dpkg file: no control file in control.tar.gz')
+                control_idx = tar_members.index('control')
+                self._log.debug('got control index: %s', control_idx)
+                # at last!
+                control_file = control_tar.extractfile(
+                    control_tar.getmembers()[control_idx])
+                self._log.debug('got control file: %s', control_file)
+                message_body = control_file.read()
+                # py27 lacks email.message_from_bytes, so...
+                if isinstance(message_body, bytes):
+                    message_body = message_body.decode('utf-8')
+                message = Message(message_body)
+                self._log.debug('got control message: %s', message)
 
-        # pathname in the tar could be ./control, or just control
-        # (there would never be two control files...right?)
-        tar_members = [os.path.basename(x.name)
-                       for x in control_tar.getmembers()]
-        if 'control' not in tar_members:
-            raise DpkgMissingControlFile(
-                'Corrupt dpkg file: no control file in control.tar.gz.')
-        control_idx = tar_members.index('control')
-
-        # at last!
-        control_file = control_tar.extractfile(
-            control_tar.getmembers()[control_idx])
-
-        # beware: dpkg will happily let people drop random encodings into the
-        # control file
-        control_str = self._force_encoding(control_file.read())
-
-        # now build the dict
-        control_file.seek(0)
-        control_headers = Message(control_file)
-
-        for header in REQUIRED_HEADERS:
-            if header not in control_headers:
+        for req in REQUIRED_HEADERS:
+            if req not in list(map(str.lower, message.keys())):
+                import pdb
+                pdb.set_trace()
+                if self.ignore_missing:
+                    self._log.debug(
+                        'Header "%s" not found in control message', req)
+                    continue
                 raise DpkgMissingRequiredHeaderError(
-                    'Corrupt control section; header: "%s" not found' % header)
+                    'Corrupt control section; header: "%s" not found' % req)
+        self._log.debug('all required headers found')
 
-        for header in control_headers:
-            control_headers[header] = self._force_encoding(
-                control_headers[header])
+        for header in message.keys():
+            self._log.debug('coercing header to utf8: %s', header)
+            message.replace_header(
+                header, self._force_encoding(message[header]))
+        self._log.debug('all required headers coerced')
 
-        return control_str, control_headers
+        return message
 
     @staticmethod
     def get_epoch(version_str):
@@ -152,6 +249,10 @@ class Dpkg(object):
 
     @staticmethod
     def split_full_version(version_str):
+        """Split a full version string into epoch, upstream version and
+        debian revision.
+        :param: version_str
+        :returns: tuple """
         epoch, full_ver = Dpkg.get_epoch(version_str)
         upstream_rev, debian_rev = Dpkg.get_upstream(full_ver)
         return epoch, upstream_rev, debian_rev
@@ -160,14 +261,12 @@ class Dpkg(object):
     def get_alphas(revision_str):
         """Return a tuple of the first non-digit characters of a revision (which
         may be empty) and the remaining characters."""
-
         # get the index of the first digit
         for i, char in enumerate(revision_str):
             if char.isdigit():
                 if i == 0:
                     return '', revision_str
-                else:
-                    return revision_str[0:i], revision_str[i:]
+                return revision_str[0:i], revision_str[i:]
         # string is entirely alphas
         return revision_str, ''
 
@@ -175,17 +274,15 @@ class Dpkg(object):
     def get_digits(revision_str):
         """Return a tuple of the first integer characters of a revision (which
         may be empty) and the remains."""
-
+        # If the string is empty, return (0,'')
         if not revision_str:
             return 0, ''
-
         # get the index of the first non-digit
         for i, char in enumerate(revision_str):
             if not char.isdigit():
                 if i == 0:
                     return 0, revision_str
-                else:
-                    return int(revision_str[0:i]), revision_str[i:]
+                return int(revision_str[0:i]), revision_str[i:]
         # string is entirely digits
         return int(revision_str), ''
 
@@ -199,12 +296,13 @@ class Dpkg(object):
         """
         result = []
         while revision_str:
-            r1, remains = Dpkg.get_alphas(revision_str)
-            r2, remains = Dpkg.get_digits(remains)
-            result.extend([r1, r2])
+            rev_1, remains = Dpkg.get_alphas(revision_str)
+            rev_2, remains = Dpkg.get_digits(remains)
+            result.extend([rev_1, rev_2])
             revision_str = remains
         return result
 
+    # pylint: disable=invalid-name,too-many-return-statements
     @staticmethod
     def dstringcmp(a, b):
         """debian package version string section lexical sort algorithm
@@ -241,32 +339,30 @@ class Dpkg(object):
             # ...except for goddamn tildes
             if char == '~':
                 return -1
-            else:
-                return 1
+            return 1
         # if we get here, a is shorter than b but otherwise equal, hence lesser
         # ...except for goddamn tildes
         if b[len(a)] == '~':
             return 1
-        else:
-            return -1
+        return -1
 
     @staticmethod
     def compare_revision_strings(rev1, rev2):
+        """Compare two debian revision strings as described at
+        https://www.debian.org/doc/debian-policy/ch-controlfields.html#s-f-Version
+        """
         if rev1 == rev2:
             return 0
-
         # listify pads results so that we will always be comparing ints to ints
         # and strings to strings (at least until we fall off the end of a list)
         list1 = Dpkg.listify(rev1)
         list2 = Dpkg.listify(rev2)
-
         if list1 == list2:
             return 0
-
         try:
             for i, item in enumerate(list1):
                 # just in case
-                if type(item) != type(list2[i]):
+                if not isinstance(item, list2[i].__class__):
                     raise DpkgVersionError(
                         'Cannot compare %s to %s, something has gone horribly '
                         'awry.' % (item, list2[i]))
@@ -274,7 +370,7 @@ class Dpkg(object):
                 if item == list2[i]:
                     continue
                 # numeric comparison
-                if type(item) == int:
+                if isinstance(item, int):
                     if item > list2[i]:
                         return 1
                     if item < list2[i]:
@@ -290,6 +386,8 @@ class Dpkg(object):
 
     @staticmethod
     def compare_versions(ver1, ver2):
+        """Function to compare two Debian package version strings,
+        suitable for passing to list.sort() and friends."""
         if ver1 == ver2:
             return 0
 
