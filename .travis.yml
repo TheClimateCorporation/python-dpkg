@@ -1,0 +1,14 @@
+language: python
+python:
+  - "2.7"
+  - "3.3"
+  - "3.4"
+  - "3.5"
+before_install:
+  - "pip install -U pip"
+install:
+  - "pip install -e .[test]"
+script:
+  - "py.test tests/"
+  - "pylint pydpkg/"
+  - "pep8 pydpkg/"
