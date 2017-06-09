@@ -141,7 +141,7 @@ class Dpkg(object):
 
     def get_header(self, header):
         """ case-independent query for a control message header value """
-        return self.headers.get(header.lower(), '')
+        return self.message.get(header)
 
     def compare_version_with(self, version_str):
         """Compare my version to an arbitrary version"""

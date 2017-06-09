@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
     name='pydpkg',
     packages=['pydpkg'],  # this must be the same as the name above
-    version='1.1',
+    version='1.1.1',
     description='A python library for parsing debian package control headers and comparing version strings',
     author='Nathan J. Mehl',
     author_email='n@climate.com',
