@@ -1,13 +1,16 @@
 from distutils.core import setup
+
+__VERSION__ = '1.1.2'
+
 setup(
     name='pydpkg',
     packages=['pydpkg'],  # this must be the same as the name above
-    version='1.1.1',
+    version=__VERSION__,
     description='A python library for parsing debian package control headers and comparing version strings',
     author='Nathan J. Mehl',
     author_email='n@climate.com',
     url='https://github.com/theclimatecorporation/python-dpkg',
-    download_url='https://github.com/theclimatecorporation/python-dpkg/tarball/1.1',
+    download_url='https://github.com/theclimatecorporation/python-dpkg/tarball/%s' % __VERSION__,
     keywords=['apt', 'debian', 'dpkg', 'packaging'],
     install_requires=[
         'arpy==1.1.1',
