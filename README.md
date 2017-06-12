@@ -77,6 +77,16 @@ Get package file fingerprints
     >>> dp.filesize
     910
 
+Get the components of the package version
+-----------------------------------------
+
+    >>> d.epoch
+    1
+    >>> d.upstream_version
+    u'0.0.0'
+    >>> d.debian_revision
+    u'test'
+
 Get an arbitrary control header, case-independent
 -------------------------------------------------
 
