@@ -1,12 +1,45 @@
 #!/usr/bin/env python
 
+import os
 import unittest
 from functools import cmp_to_key
+from email.message import Message
 
 from pydpkg import Dpkg, DpkgVersionError
 
 
+TEST_DPKG_FILE = 'testdeb_1:0.0.0-test_all.deb'
+
+
 class DpkgTest(unittest.TestCase):
+    def setUp(self):
+        dpkgfile = os.path.join(os.path.dirname(__file__), TEST_DPKG_FILE)
+        self.dpkg = Dpkg(dpkgfile)
+
+    def test_get_versions(self):
+        self.assertEqual(self.dpkg.epoch, 1)
+        self.assertEqual(self.dpkg.upstream_version, '0.0.0')
+        self.assertEqual(self.dpkg.debian_revision, 'test')
+
+    def test_get_message_headers(self):
+        self.assertEqual(self.dpkg.package, 'testdeb')
+        self.assertEqual(self.dpkg.PACKAGE, 'testdeb')
+        self.assertEqual(self.dpkg['package'], 'testdeb')
+        self.assertEqual(self.dpkg['PACKAGE'], 'testdeb')
+        self.assertEqual(self.dpkg.get('package'), 'testdeb')
+        self.assertEqual(self.dpkg.get('PACKAGE'), 'testdeb')
+        self.assertEqual(self.dpkg.get('nonexistent'), None)
+        self.assertEqual(self.dpkg.get('nonexistent', 'foo'), 'foo')
+
+    def test_missing_header(self):
+        self.assertRaises(KeyError, self.dpkg.__getitem__, 'xyzzy')
+        self.assertRaises(AttributeError, self.dpkg.__getattr__, 'xyzzy')
+
+    def test_message(self):
+        self.assertIsInstance(self.dpkg.message, type(Message()))
+
+
+class DpkgVersionsTest(unittest.TestCase):
 
     def test_get_epoch(self):
         self.assertEqual(Dpkg.get_epoch('0'), (0, '0'))
