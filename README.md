@@ -90,11 +90,17 @@ Get the components of the package version
 Get an arbitrary control header, case-independent
 -------------------------------------------------
 
-    >>> dp.get_header('version')
+    >>> d.version
     u'1:0.0.0-test'
-
-    >>> dp.get_header('VERSION')
+    
+    >>> d.VERSION
     u'1:0.0.0-test'
+    
+    >>> d.description
+    u'testdeb\n a bogus debian package for testing dpkg builds'
+    
+    >>> d.get('nosuchheader', 'default')
+    'default'
 
 Compare current version to a candidate version
 ----------------------------------------------
