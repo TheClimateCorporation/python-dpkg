@@ -120,11 +120,11 @@ Compare two arbitrary version strings
     >>> Dpkg.compare_versions(ver_1, ver_2)
     -1
 
-Use as a cmp function to sort a list of version strings
+Use as a key function to sort a list of version strings
 -------------------------------------------------------
 
     >>> from pydpkg import Dpkg
-    >>> sorted(['0:1.0-test1', '1:0.0-test0', '0:1.0-test2'] , cmp=Dpkg.compare_versions)
+    >>> sorted(['0:1.0-test1', '1:0.0-test0', '0:1.0-test2'] , key=Dpkg.compare_versions_key)
     ['0:1.0-test1', '0:1.0-test2', '1:0.0-test0']
 
 Use the `dpkg-inspect.py` script to inspect packages
