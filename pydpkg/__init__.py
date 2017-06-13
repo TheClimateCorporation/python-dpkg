@@ -13,6 +13,7 @@ import tarfile
 from gzip import GzipFile
 from hashlib import md5, sha1, sha256
 from email import message_from_string as Message
+from functools import cmp_to_key
 
 # pypi imports
 import six
@@ -520,3 +521,17 @@ class Dpkg(object):
         # at this point, the versions are equal, but due to an interpolated
         # zero in either the epoch or the debian version
         return 0
+
+    @staticmethod
+    def compare_versions_key(x):
+        """Uses functools.cmp_to_key to convert the compare_versions()
+        function to a function suitable to passing to sorted() and friends
+        as a key."""
+        return cmp_to_key(Dpkg.compare_versions)(x)
+
+    @staticmethod
+    def dstringcmp_key(x):
+        """Uses functools.cmp_to_key to convert the dstringcmp()
+        function to a function suitable to passing to sorted() and friends
+        as a key."""
+        return cmp_to_key(Dpkg.dstringcmp)(x)
