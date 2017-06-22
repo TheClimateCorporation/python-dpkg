@@ -1,6 +1,6 @@
 from distutils.core import setup
 
-__VERSION__ = '1.2.1'
+__VERSION__ = '1.3.0'
 
 setup(
     name='pydpkg',
@@ -14,7 +14,8 @@ setup(
     keywords=['apt', 'debian', 'dpkg', 'packaging'],
     install_requires=[
         'arpy==1.1.1',
-        'six==1.10.0'
+        'six==1.10.0',
+        'PGPy==0.4.1'
     ],
     extras_require={
         'test': ['pep8==1.7.0', 'pytest==3.1.1', 'pylint==1.7.1']

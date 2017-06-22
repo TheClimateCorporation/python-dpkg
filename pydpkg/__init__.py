@@ -6,17 +6,20 @@
 from __future__ import absolute_import
 
 # stdlib imports
+import hashlib
 import io
 import logging
 import os
 import tarfile
+
+from collections import defaultdict
 from gzip import GzipFile
-from hashlib import md5, sha1, sha256
-from email import message_from_string as Message
+from email import message_from_string, message_from_file
 from functools import cmp_to_key
 
 # pypi imports
 import six
+import pgpy
 from arpy import Archive
 
 REQUIRED_HEADERS = ('package', 'version', 'architecture')
@@ -25,11 +28,16 @@ logging.basicConfig()
 
 
 class DpkgError(Exception):
-    """Base error class for pydpkg"""
+    """Base error class for Dpkg errors"""
     pass
 
 
-class DpkgVersionError(Exception):
+class DscError(Exception):
+    """Base error class for Dsc errors"""
+    pass
+
+
+class DpkgVersionError(DpkgError):
     """Corrupt or unparseable version string"""
     pass
 
@@ -46,6 +54,21 @@ class DpkgMissingControlGzipFile(DpkgError):
 
 class DpkgMissingRequiredHeaderError(DpkgError):
     """Corrupt package missing a required header"""
+    pass
+
+
+class DscMissingFileError(DscError):
+    """We were not able to find some of the files listed in the dsc"""
+    pass
+
+
+class DscBadChecksumsError(DscError):
+    """Some of the files in the dsc have incorrect checksums"""
+    pass
+
+
+class DscBadSignatureError(DscError):
+    """A dsc file has an invalid openpgp signature(s)"""
     pass
 
 
@@ -152,9 +175,9 @@ class Dpkg(object):
         :returns: dict
         """
         if self._fileinfo is None:
-            h_md5 = md5()
-            h_sha1 = sha1()
-            h_sha256 = sha256()
+            h_md5 = hashlib.md5()
+            h_sha1 = hashlib.sha1()
+            h_sha256 = hashlib.sha256()
             with open(self.filename, 'rb') as dpkg_file:
                 for chunk in iter(lambda: dpkg_file.read(128), b''):
                     h_md5.update(chunk)
@@ -296,7 +319,7 @@ class Dpkg(object):
                 # py27 lacks email.message_from_bytes, so...
                 if isinstance(message_body, bytes):
                     message_body = message_body.decode('utf-8')
-                message = Message(message_body)
+                message = message_from_string(message_body)
                 self._log.debug('got control message: %s', message)
 
         for req in REQUIRED_HEADERS:
@@ -535,3 +558,245 @@ class Dpkg(object):
         function to a function suitable to passing to sorted() and friends
         as a key."""
         return cmp_to_key(Dpkg.dstringcmp)(x)
+
+
+class Dsc(object):
+    """Class allowing import and manipulation of a debian source
+       description (dsc) file."""
+    def __init__(self, filename=None, logger=None):
+        self.filename = os.path.expanduser(filename)
+        self._dirname = os.path.dirname(self.filename)
+        self._log = logger or logging.getLogger(__name__)
+        self._message = None
+        self._files = None
+        self._sizes = None
+        self._message_str = None
+        self._checksums = None
+        self._corrected_checksums = None
+        self._pgp_message = None
+
+    def __repr__(self):
+        return repr(self.message_str)
+
+    def __str__(self):
+        return six.text_type(self.message_str)
+
+    def __getattr__(self, attr):
+        """Overload getattr to treat message headers as object
+        attributes (so long as they do not conflict with an existing
+        attribute).
+
+        :param attr: string
+        :returns: string
+        :raises: AttributeError
+        """
+        # handle attributes with dashes :-(
+        munged = attr.replace('_', '-')
+        # beware: email.Message[nonexistent] returns None not KeyError
+        if munged in self.message:
+            return self.message[munged]
+        else:
+            raise AttributeError("'Dsc' object has no attribute '%s'" % attr)
+
+    def __getitem__(self, item):
+        """Overload getitem to treat the message plus our local
+        properties as items.
+
+        :param item: string
+        :returns: string
+        :raises: KeyError
+        """
+        try:
+            return getattr(self, item)
+        except AttributeError:
+            try:
+                return self.__getattr__(item)
+            except AttributeError:
+                raise KeyError(item)
+
+    def get(self, item, ret=None):
+        """Public wrapper for getitem"""
+        try:
+            return self.__getitem__(item)
+        except KeyError:
+            return ret
+
+    @property
+    def message(self):
+        """Return an email.Message object containing the parsed dsc file"""
+        if self._message is None:
+            self._message = self._process_dsc_file()
+        return self._message
+
+    @property
+    def headers(self):
+        """Return a dictionary of the message items"""
+        if self._message is None:
+            self._message = self._process_dsc_file()
+        return dict(self._message.items())
+
+    @property
+    def pgp_message(self):
+        """Return a pgpy.PGPMessage object containing the signed dsc
+        message (or None if the message is unsigned)"""
+        if self._message is None:
+            self._message = self._process_dsc_file()
+        return self._pgp_message
+
+    @property
+    def files(self):
+        """Return a list of source files found in the dsc file"""
+        if self._files is None:
+            self._files = self._process_source_files()
+        return [x[0] for x in self._files]
+
+    @property
+    def all_files_present(self):
+        """Return true if all files listed in the dsc have been found"""
+        if self._files is None:
+            self._files = self._process_source_files()
+        return all([x[2] for x in self._files])
+
+    @property
+    def all_checksums_correct(self):
+        """Return true if all checksums are correct"""
+        return not self.corrected_checksums
+
+    @property
+    def corrected_checksums(self):
+        """Returns a dict of the CORRECT checksums in any case
+        where the ones provided by the dsc file are incorrect."""
+        if self._corrected_checksums is None:
+            self._corrected_checksums = self._validate_checksums()
+        return self._corrected_checksums
+
+    @property
+    def missing_files(self):
+        """Return a list of all files from the dsc that we failed to find"""
+        if self._files is None:
+            self._files = self._process_source_files()
+        return [x[0] for x in self._files if x[2] is False]
+
+    @property
+    def sizes(self):
+        """Return a list of source files found in the dsc file"""
+        if self._files is None:
+            self._files = self._process_source_files()
+        return dict([(x[0], x[1]) for x in self._files])
+
+    @property
+    def message_str(self):
+        """Return the dsc message as a string
+
+        :returns: string
+        """
+        if self._message_str is None:
+            self._message_str = self.message.as_string()
+        return self._message_str
+
+    @property
+    def checksums(self):
+        """Return a dictionary of checksums for the source files found
+        in the dsc file, keyed first by hash type and then by filename."""
+        if self._checksums is None:
+            self._checksums = self._process_checksums()
+        return self._checksums
+
+    def validate(self):
+        """Raise exceptions if files are missing or checksums are bad."""
+        if not self.all_files_present:
+            raise DscMissingFileError(
+                [x[0] for x in self._files if not x[2]])
+        if not self.all_checksums_correct:
+            raise DscBadChecksumsError(self.corrected_checksums)
+
+    def _process_checksums(self):
+        """Walk through the dsc message looking for any keys in the
+        format 'Checksum-hashtype'.  Return a nested dictionary in
+        the form {hashtype: {filename: {digest}}}"""
+        sums = {}
+        for key in self.message.keys():
+            if key.lower().startswith('checksums'):
+                hashtype = key.split('-')[1].lower()
+                sums[hashtype] = {}
+                source = self.message[key]
+                for line in source.split('\n'):
+                    if line:
+                        digest, _, filename = line.strip().split(' ')
+                        pathname = os.path.abspath(
+                            os.path.join(self._dirname, filename))
+                        sums[hashtype][pathname] = digest
+        return sums
+
+    def _process_dsc_file(self):
+        """Extract the dsc message from a file: parse the dsc body
+        and return an email.Message object.  Attempt to extract the
+        RFC822 message from an OpenPGP message if necessary."""
+        if not self.filename.endswith('.dsc'):
+            self._log.warning(
+                'File %s does not appear to be a dsc file; pressing '
+                'on but we may experience some turbulence and possibly '
+                'explode.', self.filename)
+        try:
+            self._pgp_message = pgpy.PGPMessage.from_file(self.filename)
+            msg = message_from_string(self._pgp_message.message)
+        except TypeError as ex:
+            self._log.exception(ex)
+            self._log.fatal(
+                'dsc file %s has a corrupt signature: %s', self.filename, ex)
+            raise DscBadSignatureError
+            # '%s has a corrupt signature' % self.filename)
+        except IOError as ex:
+            self._log.fatal('Could not read dsc file "%s": %s',
+                            self.filename, ex)
+            raise
+        except (ValueError, pgpy.errors.PGPError) as ex:
+            self._log.warning('dsc file %s is not signed: %s',
+                              self.filename, ex)
+            with open(self.filename) as fileobj:
+                msg = message_from_file(fileobj)
+        return msg
+
+    def _process_source_files(self):
+        """Walk through the list of lines in the 'Files' section of
+        the dsc message, and verify that the file exists in the same
+        location on our filesystem as the dsc file.  Return a list
+        of tuples: the normalized pathname for the file, the
+        size of the file (as claimed by the dsc) and whether the file
+        is actually present in the filesystem locally.
+
+        Also extract the file size from the message lines and fill
+        out the _files dictionary.
+        """
+        filenames = []
+        try:
+            files = self.message['Files']
+        except KeyError:
+            self._log.fatal('DSC file "%s" does not have a Files section',
+                            self.filename)
+            raise
+        for line in files.split('\n'):
+            if line:
+                _, size, filename = line.strip().split(' ')
+                pathname = os.path.abspath(
+                    os.path.join(self._dirname, filename))
+                filenames.append(
+                    (pathname, int(size), os.path.isfile(pathname)))
+        return filenames
+
+    def _validate_checksums(self):
+        """Iterate over the dict of asserted checksums from the
+        dsc file.  Check each in turn.  If any checksum is invalid,
+        append the correct checksum to a similarly structured dict
+        and return them all at the end."""
+        bad_hashes = defaultdict(lambda: defaultdict(None))
+        for hashtype, filenames in six.iteritems(self.checksums):
+            for filename, digest in six.iteritems(filenames):
+                hasher = getattr(hashlib, hashtype)()
+                with open(filename, 'rb') as fileobj:
+                    # pylint: disable=cell-var-from-loop
+                    for chunk in iter(lambda: fileobj.read(128), b''):
+                        hasher.update(chunk)
+                if hasher.hexdigest() != digest:
+                    bad_hashes[hashtype][filename] = hasher.hexdigest()
+        return dict(bad_hashes)
