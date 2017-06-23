@@ -1,6 +1,6 @@
 from distutils.core import setup
 
-__VERSION__ = '1.3.0'
+__VERSION__ = '1.3.1'
 
 setup(
     name='pydpkg',
