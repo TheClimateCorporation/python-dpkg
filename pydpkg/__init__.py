@@ -568,7 +568,7 @@ class Dsc(object):
         self._dirname = os.path.dirname(self.filename)
         self._log = logger or logging.getLogger(__name__)
         self._message = None
-        self._files = None
+        self._source_files = None
         self._sizes = None
         self._message_str = None
         self._checksums = None
@@ -590,6 +590,9 @@ class Dsc(object):
         :returns: string
         :raises: AttributeError
         """
+        self._log.debug('grabbing attr: %s', attr)
+        if attr in self.__dict__:
+            return self.__dict__[attr]
         # handle attributes with dashes :-(
         munged = attr.replace('_', '-')
         # beware: email.Message[nonexistent] returns None not KeyError
@@ -606,6 +609,7 @@ class Dsc(object):
         :returns: string
         :raises: KeyError
         """
+        self._log.debug('grabbing item: %s', item)
         try:
             return getattr(self, item)
         except AttributeError:
@@ -624,6 +628,7 @@ class Dsc(object):
     @property
     def message(self):
         """Return an email.Message object containing the parsed dsc file"""
+        self._log.debug('accessing message property')
         if self._message is None:
             self._message = self._process_dsc_file()
         return self._message
@@ -644,18 +649,18 @@ class Dsc(object):
         return self._pgp_message
 
     @property
-    def files(self):
+    def source_files(self):
         """Return a list of source files found in the dsc file"""
-        if self._files is None:
-            self._files = self._process_source_files()
-        return [x[0] for x in self._files]
+        if self._source_files is None:
+            self._source_files = self._process_source_files()
+        return [x[0] for x in self._source_files]
 
     @property
     def all_files_present(self):
         """Return true if all files listed in the dsc have been found"""
-        if self._files is None:
-            self._files = self._process_source_files()
-        return all([x[2] for x in self._files])
+        if self._source_files is None:
+            self._source_files = self._process_source_files()
+        return all([x[2] for x in self._source_files])
 
     @property
     def all_checksums_correct(self):
@@ -673,16 +678,16 @@ class Dsc(object):
     @property
     def missing_files(self):
         """Return a list of all files from the dsc that we failed to find"""
-        if self._files is None:
-            self._files = self._process_source_files()
-        return [x[0] for x in self._files if x[2] is False]
+        if self._source_files is None:
+            self._source_files = self._process_source_files()
+        return [x[0] for x in self._source_files if x[2] is False]
 
     @property
     def sizes(self):
         """Return a list of source files found in the dsc file"""
-        if self._files is None:
-            self._files = self._process_source_files()
-        return dict([(x[0], x[1]) for x in self._files])
+        if self._source_files is None:
+            self._source_files = self._process_source_files()
+        return dict([(x[0], x[1]) for x in self._source_files])
 
     @property
     def message_str(self):
@@ -706,7 +711,7 @@ class Dsc(object):
         """Raise exceptions if files are missing or checksums are bad."""
         if not self.all_files_present:
             raise DscMissingFileError(
-                [x[0] for x in self._files if not x[2]])
+                [x[0] for x in self._source_files if not x[2]])
         if not self.all_checksums_correct:
             raise DscBadChecksumsError(self.corrected_checksums)
 
@@ -714,38 +719,83 @@ class Dsc(object):
         """Walk through the dsc message looking for any keys in the
         format 'Checksum-hashtype'.  Return a nested dictionary in
         the form {hashtype: {filename: {digest}}}"""
+        self._log.debug('process_checksums()')
         sums = {}
         for key in self.message.keys():
             if key.lower().startswith('checksums'):
                 hashtype = key.split('-')[1].lower()
-                sums[hashtype] = {}
-                source = self.message[key]
-                for line in source.split('\n'):
-                    if line:
-                        digest, _, filename = line.strip().split(' ')
-                        pathname = os.path.abspath(
-                            os.path.join(self._dirname, filename))
-                        sums[hashtype][pathname] = digest
+            # grrrrrr debian :( :( :(
+            elif key.lower() == 'files':
+                hashtype = 'md5'
+            else:
+                continue
+            sums[hashtype] = {}
+            source = self.message[key]
+            for line in source.split('\n'):
+                if line:  # grrr py3--
+                    digest, _, filename = line.strip().split(' ')
+                    pathname = os.path.abspath(
+                        os.path.join(self._dirname, filename))
+                    sums[hashtype][pathname] = digest
         return sums
+
+    def _internalize_message(self, msg):
+        """Ugh: the dsc message body may not include a Files or
+        Checksums-foo entry for _itself_, which makes for hilarious
+        misadventures up the chain.  So, pfeh, we add it."""
+        self._log.debug('internalize_message()')
+        base = os.path.basename(self.filename)
+        size = os.path.getsize(self.filename)
+        for key, source in msg.items():
+            self._log.debug('processing key: %s', key)
+            if key.lower().startswith('checksums'):
+                hashtype = key.split('-')[1].lower()
+            elif key.lower() == 'files':
+                hashtype = 'md5'
+            else:
+                continue
+            found = []
+            for line in source.split('\n'):
+                if line:  # grrr
+                    found.append(line.strip().split(' '))
+            files = [x[2] for x in found]
+            if base not in files:
+                self._log.debug('dsc file not found in %s: %s', key, base)
+                self._log.debug('getting hasher for %s', hashtype)
+                hasher = getattr(hashlib, hashtype)()
+                self._log.debug('hashing file')
+                with open(self.filename, 'rb') as fileobj:
+                    # pylint: disable=cell-var-from-loop
+                    for chunk in iter(lambda: fileobj.read(1024), b''):
+                        hasher.update(chunk)
+                    self._log.debug('completed hashing file')
+                self._log.debug('got %s digest: %s',
+                                hashtype, hasher.hexdigest())
+                newline = '\n {0} {1} {2}'.format(
+                    hasher.hexdigest(), size, base)
+                self._log.debug('new line: %s', newline)
+                msg.replace_header(key, msg[key] + newline)
+        return msg
 
     def _process_dsc_file(self):
         """Extract the dsc message from a file: parse the dsc body
         and return an email.Message object.  Attempt to extract the
         RFC822 message from an OpenPGP message if necessary."""
+        self._log.debug('process_dsc_file()')
         if not self.filename.endswith('.dsc'):
-            self._log.warning(
+            self._log.debug(
                 'File %s does not appear to be a dsc file; pressing '
                 'on but we may experience some turbulence and possibly '
                 'explode.', self.filename)
         try:
             self._pgp_message = pgpy.PGPMessage.from_file(self.filename)
+            self._log.debug('Found pgp signed message')
             msg = message_from_string(self._pgp_message.message)
         except TypeError as ex:
             self._log.exception(ex)
             self._log.fatal(
                 'dsc file %s has a corrupt signature: %s', self.filename, ex)
             raise DscBadSignatureError
-            # '%s has a corrupt signature' % self.filename)
         except IOError as ex:
             self._log.fatal('Could not read dsc file "%s": %s',
                             self.filename, ex)
@@ -755,6 +805,7 @@ class Dsc(object):
                               self.filename, ex)
             with open(self.filename) as fileobj:
                 msg = message_from_file(fileobj)
+        msg = self._internalize_message(msg)
         return msg
 
     def _process_source_files(self):
@@ -768,6 +819,7 @@ class Dsc(object):
         Also extract the file size from the message lines and fill
         out the _files dictionary.
         """
+        self._log.debug('process_source_files()')
         filenames = []
         try:
             files = self.message['Files']
@@ -789,6 +841,7 @@ class Dsc(object):
         dsc file.  Check each in turn.  If any checksum is invalid,
         append the correct checksum to a similarly structured dict
         and return them all at the end."""
+        self._log.debug('validate_checksums()')
         bad_hashes = defaultdict(lambda: defaultdict(None))
         for hashtype, filenames in six.iteritems(self.checksums):
             for filename, digest in six.iteritems(filenames):

@@ -147,8 +147,30 @@ the [pip](https://packaging.python.org/installing/) tool:
 
     >>> from pydpkg import Dsc
     >>> dsc = Dsc('testdeb_0.0.0.dsc')
+    >>> dsc.standards_version
+    '3.9.6'
+    >>> dsc.format
+    '3.0 (quilt)'
+    >>> x.build_depends
+    'python (>= 2.6.6-3), debhelper (>= 9)'
+
+#### Get the full set of dsc headers as a dictionary
+
     >>> dsc.headers
-    {'Uploaders': 'Nathan J. Mehl <n@climate.com>', 'Binary': 'testdeb', 'Maintainer': 'Nathan J. Mehl <n@climate.com>', 'Format': '3.0 (quilt)', 'Build-Depends': 'python (>= 2.6.6-3), debhelper (>= 9)', 'Source': 'testdeb', 'Version': '0.0.0-1', 'Standards-Version': '3.9.6', 'Architecture': 'all', 'Files': ' 142ca7334ed1f70302b4504566e0c233 280 testdeb_0.0.0.orig.tar.gz\n fc80e6e7f1c1a08b78a674aaee6c1548 232 testdeb_0.0.0-1.debian.tar.xz', 'Checksums-Sha1': ' f250ac0a426b31df24fc2c98050f4fab90e456cd 280 testdeb_0.0.0.orig.tar.gz\n cb3474ff94053018957ebcf1d8a2b45f75dda449 232 testdeb_0.0.0-1.debian.tar.xz', 'Package-List': 'testdeb', 'Homepage': 'https://github.com/TheClimateCorporation', 'Checksums-Sha256': ' aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7 280 testdeb_0.0.0.orig.tar.gz\n 1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858 232 testdeb_0.0.0-1.debian.tar.xz'}
+    {'Architecture': 'all',
+     'Binary': 'testdeb',
+     'Build-Depends': 'python (>= 2.6.6-3), debhelper (>= 9)',
+     'Checksums-Sha1': ' f250ac0a426b31df24fc2c98050f4fab90e456cd 280 testdeb_0.0.0.orig.tar.gz\n cb3474ff94053018957ebcf1d8a2b45f75dda449 232 testdeb_0.0.0-1.debian.tar.xz\n 80cd7b01014a269d445c63b037b885d6002cf533 841 testdeb_0.0.0.dsc',
+     'Checksums-Sha256': ' aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7 280 testdeb_0.0.0.orig.tar.gz\n 1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858 232 testdeb_0.0.0-1.debian.tar.xz\n b5ad1591349eb48db65e6865be506ad7dbd21931902a71addee5b1db9ae1ac2a 841 testdeb_0.0.0.dsc',
+     'Files': ' 142ca7334ed1f70302b4504566e0c233 280 testdeb_0.0.0.orig.tar.gz\n fc80e6e7f1c1a08b78a674aaee6c1548 232 testdeb_0.0.0-1.debian.tar.xz\n 893d13a2ef13f7409c9521e8ab1dbccb 841 testdeb_0.0.0.dsc',
+     'Format': '3.0 (quilt)',
+     'Homepage': 'https://github.com/TheClimateCorporation',
+     'Maintainer': 'Nathan J. Mehl <n@climate.com>',
+     'Package-List': 'testdeb',
+     'Source': 'testdeb',
+     'Standards-Version': '3.9.6',
+     'Uploaders': 'Nathan J. Mehl <n@climate.com>',
+     'Version': '0.0.0-1'}
 
 #### Interact directly with the dsc message
 
@@ -161,7 +183,7 @@ the [pip](https://packaging.python.org/installing/) tool:
 
 #### Render the dsc message as a string
 
-    >>> print(dsc.message_str)
+    >>> print(dsc)
     Format: 3.0 (quilt)
     Source: testdeb
     Binary: testdeb
@@ -173,20 +195,25 @@ the [pip](https://packaging.python.org/installing/) tool:
     Standards-Version: 3.9.6
     Build-Depends: python (>= 2.6.6-3), debhelper (>= 9)
     Package-List: testdeb
-    Checksums-Sha1: f250ac0a426b31df24fc2c98050f4fab90e456cd 280
-     testdeb_0.0.0.orig.tar.gz
+    Checksums-Sha1:
+     f250ac0a426b31df24fc2c98050f4fab90e456cd 280 testdeb_0.0.0.orig.tar.gz
      cb3474ff94053018957ebcf1d8a2b45f75dda449 232 testdeb_0.0.0-1.debian.tar.xz
-    Checksums-Sha256: aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7 280
-     testdeb_0.0.0.orig.tar.gz
-     1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858 232
-     testdeb_0.0.0-1.debian.tar.xz
-    Files: 142ca7334ed1f70302b4504566e0c233 280 testdeb_0.0.0.orig.tar.gz
+     80cd7b01014a269d445c63b037b885d6002cf533 841 testdeb_0.0.0.dsc
+    Checksums-Sha256:
+     aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7 280 testdeb_0.0.0.orig.tar.gz
+     1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858 232 testdeb_0.0.0-1.debian.tar.xz
+     b5ad1591349eb48db65e6865be506ad7dbd21931902a71addee5b1db9ae1ac2a 841 testdeb_0.0.0.dsc
+    Files:
+     142ca7334ed1f70302b4504566e0c233 280 testdeb_0.0.0.orig.tar.gz
      fc80e6e7f1c1a08b78a674aaee6c1548 232 testdeb_0.0.0-1.debian.tar.xz
+     893d13a2ef13f7409c9521e8ab1dbccb 841 testdeb_0.0.0.dsc
 
 #### List the package source files from the dsc
 
-    >>> dsc.files
-    ['/home/n/testdeb_0.0.0.orig.tar.gz', 'home/n/testdeb_0.0.0-1.debian.tar.xz']
+    >>> dsc.source_files
+    ['/tmp/testdeb_0.0.0.orig.tar.gz',
+     '/tmp/testdeb_0.0.0-1.debian.tar.xz',
+     '/tmp/testdeb_0.0.0.dsc' ]
 
 #### Validate that the package source files are present
 
@@ -199,19 +226,24 @@ the [pip](https://packaging.python.org/installing/) tool:
 
     >>> bad = Dsc('testdeb_1.1.1-bad.dsc')
     >>> bad.missing_files
-    ['/home/n/testdeb_1.1.1.orig.tar.gz', '/home/n/testdeb_1.1.1-1.debian.tar.xz']
+    ['/tmp/testdeb_1.1.1.orig.tar.gz', '/tmp/testdeb_1.1.1-1.debian.tar.xz']
     >>> bad.all_files_present
     False
     >>> bad.validate()
-    pydpkg.DscMissingFileError: ['/home/n/testdeb_1.1.1.orig.tar.gz', '/home/n/testdeb_1.1.1-1.debian.tar.xz']
+    pydpkg.DscMissingFileError: ['/tmp/testdeb_1.1.1.orig.tar.gz', '/tmp/testdeb_1.1.1-1.debian.tar.xz']
 
 #### Inspect the source file checksums from the dsc
 
     >>> pp(dsc.checksums)
-    {'sha1': {'/home/n/testdeb_0.0.0-1.debian.tar.xz': 'cb3474ff94053018957ebcf1d8a2b45f75dda449',
-              '/home/n/testdeb_0.0.0.orig.tar.gz': 'f250ac0a426b31df24fc2c98050f4fab90e456cd'},
-     'sha256': {'/home/n/testdeb_0.0.0-1.debian.tar.xz': '1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858',
-                '/home/n/testdeb_0.0.0.orig.tar.gz': 'aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7'}}
+    {'md5': {'/tmp/testdeb_0.0.0-1.debian.tar.xz': 'fc80e6e7f1c1a08b78a674aaee6c1548',
+             '/tmp/testdeb_0.0.0.dsc': '893d13a2ef13f7409c9521e8ab1dbccb',
+             '/tmp/testdeb_0.0.0.orig.tar.gz': '142ca7334ed1f70302b4504566e0c233'},
+     'sha1': {'/tmp/testdeb_0.0.0-1.debian.tar.xz': 'cb3474ff94053018957ebcf1d8a2b45f75dda449',
+              '/tmp/testdeb_0.0.0.dsc': '80cd7b01014a269d445c63b037b885d6002cf533',
+              '/tmp/testdeb_0.0.0.orig.tar.gz': 'f250ac0a426b31df24fc2c98050f4fab90e456cd'},
+     'sha256': {'/tmp/testdeb_0.0.0-1.debian.tar.xz': '1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858',
+                '/tmp/testdeb_0.0.0.dsc': 'b5ad1591349eb48db65e6865be506ad7dbd21931902a71addee5b1db9ae1ac2a',
+                '/tmp/testdeb_0.0.0.orig.tar.gz': 'aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7'}}
 
 #### Validate that all source file checksums are correct
 
@@ -224,8 +256,8 @@ the [pip](https://packaging.python.org/installing/) tool:
 
     >>> bad = Dsc('testdeb_0.0.0-badchecksums.dsc')
     >>> bad.corrected_checksums
-    {'sha256': defaultdict(None, {'/home/n/testdeb_0.0.0-1.debian.tar.xz': '1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858', '/home/n/testdeb_0.0.0.orig.tar.gz': 'aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7'}), 'sha1': defaultdict(None, {'/home/n/testdeb_0.0.0-1.debian.tar.xz': 'cb3474ff94053018957ebcf1d8a2b45f75dda449', '/home/n/testdeb_0.0.0.orig.tar.gz': 'f250ac0a426b31df24fc2c98050f4fab90e456cd'})}
+    {'sha256': defaultdict(None, {'/tmp/testdeb_0.0.0-1.debian.tar.xz': '1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858', '/tmp/testdeb_0.0.0.orig.tar.gz': 'aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7'}), 'sha1': defaultdict(None, {'/tmp/testdeb_0.0.0-1.debian.tar.xz': 'cb3474ff94053018957ebcf1d8a2b45f75dda449', '/tmp/testdeb_0.0.0.orig.tar.gz': 'f250ac0a426b31df24fc2c98050f4fab90e456cd'})}
     >>> bad.all_checksums_correct
     False
     >>> bad.validate()
-    pydpkg.DscBadChecksumsError: {'sha256': defaultdict(None, {'/home/n/testdeb_0.0.0-1.debian.tar.xz': '1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858', '/home/n/testdeb_0.0.0.orig.tar.gz': 'aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7'}), 'sha1': defaultdict(None, {'/home/n/testdeb_0.0.0-1.debian.tar.xz': 'cb3474ff94053018957ebcf1d8a2b45f75dda449', '/home/n/testdeb_0.0.0.orig.tar.gz': 'f250ac0a426b31df24fc2c98050f4fab90e456cd'})}
+    pydpkg.DscBadChecksumsError: {'sha256': defaultdict(None, {'/tmp/testdeb_0.0.0-1.debian.tar.xz': '1ddb2a7336a99bc1d203f3ddb59f6fa2d298e90cb3e59cccbe0c84e359979858', '/tmp/testdeb_0.0.0.orig.tar.gz': 'aa57ba8f29840383f5a96c5c8f166a9e6da7a484151938643ce2618e82bfeea7'}), 'sha1': defaultdict(None, {'/tmp/testdeb_0.0.0-1.debian.tar.xz': 'cb3474ff94053018957ebcf1d8a2b45f75dda449', '/tmp/testdeb_0.0.0.orig.tar.gz': 'f250ac0a426b31df24fc2c98050f4fab90e456cd'})}
