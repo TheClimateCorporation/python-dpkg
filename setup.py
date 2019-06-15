@@ -14,7 +14,7 @@ setup(
     keywords=['apt', 'debian', 'dpkg', 'packaging'],
     install_requires=[
         'arpy==1.1.1',
-        'six==1.12.0',
+        'six==1.10.0',
         'PGPy==0.4.1'
     ],
     extras_require={
@@ -27,7 +27,6 @@ setup(
         "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python :: 2.7",
-        "Programming Language :: Python :: 3.3",
         "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
