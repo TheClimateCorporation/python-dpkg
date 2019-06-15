@@ -29,51 +29,42 @@ logging.basicConfig()
 
 class DpkgError(Exception):
     """Base error class for Dpkg errors"""
-    pass
 
 
 class DscError(Exception):
     """Base error class for Dsc errors"""
-    pass
 
 
 class DpkgVersionError(DpkgError):
     """Corrupt or unparseable version string"""
-    pass
 
 
 class DpkgMissingControlFile(DpkgError):
     """No control file found in control.tar.gz"""
-    pass
 
 
 class DpkgMissingControlGzipFile(DpkgError):
     """No control.tar.gz file found in dpkg file"""
-    pass
 
 
 class DpkgMissingRequiredHeaderError(DpkgError):
     """Corrupt package missing a required header"""
-    pass
 
 
 class DscMissingFileError(DscError):
     """We were not able to find some of the files listed in the dsc"""
-    pass
 
 
 class DscBadChecksumsError(DscError):
     """Some of the files in the dsc have incorrect checksums"""
-    pass
 
 
 class DscBadSignatureError(DscError):
     """A dsc file has an invalid openpgp signature(s)"""
-    pass
 
 
 # pylint: disable=too-many-instance-attributes,too-many-public-methods
-class Dpkg(object):
+class Dpkg():
 
     """Class allowing import and manipulation of a debian package file."""
 
@@ -89,7 +80,7 @@ class Dpkg(object):
         if not isinstance(self.filename, six.string_types):
             raise DpkgError('filename argument must be a string')
         if not os.path.isfile(self.filename):
-            raise DpkgError('filename "%s" does not exist', filename)
+            raise DpkgError('filename "%s" does not exist' % filename)
         self._log = logger or logging.getLogger(__name__)
         self._fileinfo = None
         self._control_str = None
@@ -117,8 +108,7 @@ class Dpkg(object):
         # beware: email.Message[nonexistent] returns None not KeyError
         if attr in self.message:
             return self.message[attr]
-        else:
-            raise AttributeError("'Dpkg' object has no attribute '%s'" % attr)
+        raise AttributeError("'Dpkg' object has no attribute '%s'" % attr)
 
     def __getitem__(self, item):
         """Overload getitem to treat the control message plus our local
@@ -560,7 +550,7 @@ class Dpkg(object):
         return cmp_to_key(Dpkg.dstringcmp)(x)
 
 
-class Dsc(object):
+class Dsc():
     """Class allowing import and manipulation of a debian source
        description (dsc) file."""
     def __init__(self, filename=None, logger=None):
@@ -598,8 +588,7 @@ class Dsc(object):
         # beware: email.Message[nonexistent] returns None not KeyError
         if munged in self.message:
             return self.message[munged]
-        else:
-            raise AttributeError("'Dsc' object has no attribute '%s'" % attr)
+        raise AttributeError("'Dsc' object has no attribute '%s'" % attr)
 
     def __getitem__(self, item):
         """Overload getitem to treat the message plus our local
@@ -687,7 +676,7 @@ class Dsc(object):
         """Return a list of source files found in the dsc file"""
         if self._source_files is None:
             self._source_files = self._process_source_files()
-        return dict([(x[0], x[1]) for x in self._source_files])
+        return {(x[0], x[1]) for x in self._source_files}
 
     @property
     def message_str(self):

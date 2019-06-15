@@ -1,12 +1,14 @@
 from distutils.core import setup
 
-__VERSION__ = '1.3.2'
+__VERSION__ = '2.0.0'
 
 setup(
     name='pydpkg',
     packages=['pydpkg'],  # this must be the same as the name above
     version=__VERSION__,
     description='A python library for parsing debian package control headers and comparing version strings',
+    long_description=open('README.md').read(),
+    long_description_content_type='text/markdown',
     author='Nathan J. Mehl',
     author_email='n@climate.com',
     url='https://github.com/theclimatecorporation/python-dpkg',
@@ -18,7 +20,7 @@ setup(
         'PGPy==0.4.1'
     ],
     extras_require={
-        'test': ['pep8==1.7.0', 'pytest==3.1.1', 'pylint==1.7.1']
+        'test': ['pep8==1.7.0', 'pytest==3.1.1', 'pylint==2.3.1']
     },
     scripts=[
         'scripts/dpkg-inspect.py'
@@ -26,7 +28,6 @@ setup(
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: Apache Software License",
-        "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3.4",
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
