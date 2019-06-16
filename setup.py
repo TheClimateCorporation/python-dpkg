@@ -5,6 +5,7 @@ __VERSION__ = '1.4.0'
 setup(
     name='pydpkg',
     packages=['pydpkg'],  # this must be the same as the name above
+    python_requires=">=3.4",
     version=__VERSION__,
     description='A python library for parsing debian package control headers and comparing version strings',
     long_description=open('README.md').read(),
