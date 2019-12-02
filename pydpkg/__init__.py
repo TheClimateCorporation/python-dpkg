@@ -9,6 +9,7 @@ from __future__ import absolute_import
 import hashlib
 import io
 import logging
+import lzma
 import os
 import tarfile
 
@@ -40,11 +41,11 @@ class DpkgVersionError(DpkgError):
 
 
 class DpkgMissingControlFile(DpkgError):
-    """No control file found in control.tar.gz"""
+    """No control file found in control.tar.gz/xz"""
 
 
 class DpkgMissingControlGzipFile(DpkgError):
-    """No control.tar.gz file found in dpkg file"""
+    """No control.tar.gz/xz file found in dpkg file"""
 
 
 class DpkgMissingRequiredHeaderError(DpkgError):
@@ -275,42 +276,55 @@ class Dpkg():
                 obj = six.text_type(obj, encoding)
         return obj
 
+    def _extract_message(self, ctar):
+        # pathname in the tar could be ./control, or just control
+        # (there would never be two control files...right?)
+        tar_members = [
+            os.path.basename(x.name) for x in ctar.getmembers()]
+        self._log.debug('got tar members: %s', tar_members)
+        if 'control' not in tar_members:
+            raise DpkgMissingControlFile(
+                'Corrupt dpkg file: no control file in control.tar.gz')
+        control_idx = tar_members.index('control')
+        self._log.debug('got control index: %s', control_idx)
+        # at last!
+        control_file = ctar.extractfile(
+            ctar.getmembers()[control_idx])
+        self._log.debug('got control file: %s', control_file)
+        message_body = control_file.read()
+        # py27 lacks email.message_from_bytes, so...
+        if isinstance(message_body, bytes):
+            message_body = message_body.decode('utf-8')
+        message = message_from_string(message_body)
+        self._log.debug('got control message: %s', message)
+        return message
+
     def _process_dpkg_file(self, filename):
         dpkg_archive = Archive(filename)
         dpkg_archive.read_all_headers()
-        try:
-            control_tgz = dpkg_archive.archived_files[b'control.tar.gz']
-        except KeyError:
+        if b'control.tar.gz' in dpkg_archive.archived_files:
+            control_archive = dpkg_archive.archived_files[b'control.tar.gz']
+            control_archive_type = "gz"
+        elif b'control.tar.xz' in dpkg_archive.archived_files:
+            control_archive = dpkg_archive.archived_files[b'control.tar.xz']
+            control_archive_type = "xz"
+        else:
             raise DpkgMissingControlGzipFile(
-                'Corrupt dpkg file: no control.tar.gz file in ar archive.')
-        self._log.debug('found controlgz: %s', control_tgz)
+                'Corrupt dpkg file: no control.tar.gz/xz file in ar archive.')
+        self._log.debug('found controlgz: %s', control_archive)
 
-        # have to pass through BytesIO because gzipfile doesn't support seek
-        # from end; luckily control tars are tiny
-        with GzipFile(fileobj=control_tgz) as gzf:
-            self._log.debug('opened gzip file: %s', gzf)
-            with tarfile.open(fileobj=io.BytesIO(gzf.read())) as control_tar:
-                self._log.debug('opened tar file: %s', control_tar)
-                # pathname in the tar could be ./control, or just control
-                # (there would never be two control files...right?)
-                tar_members = [
-                    os.path.basename(x.name) for x in control_tar.getmembers()]
-                self._log.debug('got tar members: %s', tar_members)
-                if 'control' not in tar_members:
-                    raise DpkgMissingControlFile(
-                        'Corrupt dpkg file: no control file in control.tar.gz')
-                control_idx = tar_members.index('control')
-                self._log.debug('got control index: %s', control_idx)
-                # at last!
-                control_file = control_tar.extractfile(
-                    control_tar.getmembers()[control_idx])
-                self._log.debug('got control file: %s', control_file)
-                message_body = control_file.read()
-                # py27 lacks email.message_from_bytes, so...
-                if isinstance(message_body, bytes):
-                    message_body = message_body.decode('utf-8')
-                message = message_from_string(message_body)
-                self._log.debug('got control message: %s', message)
+        if control_archive_type == "gz":
+            with GzipFile(fileobj=control_archive) as gzf:
+                self._log.debug('opened gzip control archive: %s', gzf)
+                with tarfile.open(fileobj=io.BytesIO(gzf.read())) as ctar:
+                    self._log.debug('opened tar file: %s', ctar)
+                    message = self._extract_message(ctar)
+        else:
+            with lzma.open(control_archive) as xzf:
+                self._log.debug('opened xz control archive: %s', xzf)
+                with tarfile.open(fileobj=io.BytesIO(xzf.read())) as ctar:
+                    self._log.debug('opened tar file: %s', ctar)
+                    message = self._extract_message(ctar)
 
         for req in REQUIRED_HEADERS:
             if req not in list(map(str.lower, message.keys())):
