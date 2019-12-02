@@ -6,7 +6,7 @@ fi
 
 . venv2/bin/activate
 
-pip install -U pip setuptools
+pip install -U pip setuptools twine
 
 python setup.py sdist bdist_wheel
 
