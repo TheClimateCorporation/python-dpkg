@@ -1,6 +1,6 @@
 from distutils.core import setup
 
-__VERSION__ = '1.3.1'
+__VERSION__ = '1.3.2'
 
 setup(
     name='pydpkg',
@@ -14,6 +14,7 @@ setup(
     keywords=['apt', 'debian', 'dpkg', 'packaging'],
     install_requires=[
         'arpy==1.1.1',
+        'backports.lzma==0.0.14',
         'six==1.10.0',
         'PGPy==0.4.1'
     ],
