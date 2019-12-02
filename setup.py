@@ -1,3 +1,4 @@
+import setuptools
 from distutils.core import setup
 
 __VERSION__ = '1.3.2'
@@ -12,6 +13,9 @@ setup(
     url='https://github.com/theclimatecorporation/python-dpkg',
     download_url='https://github.com/theclimatecorporation/python-dpkg/tarball/%s' % __VERSION__,
     keywords=['apt', 'debian', 'dpkg', 'packaging'],
+    setup_requires=[
+        'wheel'
+    ],
     install_requires=[
         'arpy==1.1.1',
         'backports.lzma==0.0.14',
@@ -19,7 +23,8 @@ setup(
         'PGPy==0.4.1'
     ],
     extras_require={
-        'test': ['pep8==1.7.0', 'pytest==3.1.1', 'pylint==1.7.1']
+        'test': ['pep8==1.7.0', 'pytest==3.1.1', 'pylint==2.3.1'],
+        'publish': ['twine']
     },
     scripts=[
         'scripts/dpkg-inspect.py'
