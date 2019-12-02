@@ -7,12 +7,13 @@ from email.message import Message
 from pydpkg import Dpkg, DpkgVersionError
 
 
-TEST_DPKG_FILE = 'testdeb_1:0.0.0-test_all.deb'
+TEST_DPKG_GZ_FILE = 'testdeb_1:0.0.0-test_all.deb'
+TEST_DPKG_XZ_FILE = 'sample_package_xz.deb'
 
 
-class DpkgTest(unittest.TestCase):
+class DpkgGzTest(unittest.TestCase):
     def setUp(self):
-        dpkgfile = os.path.join(os.path.dirname(__file__), TEST_DPKG_FILE)
+        dpkgfile = os.path.join(os.path.dirname(__file__), TEST_DPKG_GZ_FILE)
         self.dpkg = Dpkg(dpkgfile)
 
     def test_get_versions(self):
@@ -27,6 +28,34 @@ class DpkgTest(unittest.TestCase):
         self.assertEqual(self.dpkg['PACKAGE'], 'testdeb')
         self.assertEqual(self.dpkg.get('package'), 'testdeb')
         self.assertEqual(self.dpkg.get('PACKAGE'), 'testdeb')
+        self.assertEqual(self.dpkg.get('nonexistent'), None)
+        self.assertEqual(self.dpkg.get('nonexistent', 'foo'), 'foo')
+
+    def test_missing_header(self):
+        self.assertRaises(KeyError, self.dpkg.__getitem__, 'xyzzy')
+        self.assertRaises(AttributeError, self.dpkg.__getattr__, 'xyzzy')
+
+    def test_message(self):
+        self.assertIsInstance(self.dpkg.message, type(Message()))
+
+
+class DpkgXzTest(unittest.TestCase):
+    def setUp(self):
+        dpkgfile = os.path.join(os.path.dirname(__file__), TEST_DPKG_XZ_FILE)
+        self.dpkg = Dpkg(dpkgfile)
+
+    def test_get_versions(self):
+        self.assertEqual(self.dpkg.epoch, 0)
+        self.assertEqual(self.dpkg.upstream_version, '0.0.1')
+        self.assertEqual(self.dpkg.debian_revision, '0')
+
+    def test_get_message_headers(self):
+        self.assertEqual(self.dpkg.package, 'samplepackage.test')
+        self.assertEqual(self.dpkg.PACKAGE, 'samplepackage.test')
+        self.assertEqual(self.dpkg['package'], 'samplepackage.test')
+        self.assertEqual(self.dpkg['PACKAGE'], 'samplepackage.test')
+        self.assertEqual(self.dpkg.get('package'), 'samplepackage.test')
+        self.assertEqual(self.dpkg.get('PACKAGE'), 'samplepackage.test')
         self.assertEqual(self.dpkg.get('nonexistent'), None)
         self.assertEqual(self.dpkg.get('nonexistent', 'foo'), 'foo')
 
@@ -174,5 +203,9 @@ class DpkgVersionsTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    suite = unittest.TestLoader().loadTestsFromTestCase(DpkgTest)
+    suite = unittest.TestLoader().loadTestsFromTestCase(DpkgGzTest)
+    unittest.TextTestRunner(verbosity=2).run(suite)
+    suite = unittest.TestLoader().loadTestsFromTestCase(DpkgXzTest)
+    unittest.TextTestRunner(verbosity=2).run(suite)
+    suite = unittest.TestLoader().loadTestsFromTestCase(DpkgVersionsTest)
     unittest.TextTestRunner(verbosity=2).run(suite)
