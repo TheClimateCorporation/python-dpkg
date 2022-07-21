@@ -12,6 +12,7 @@ import logging
 import lzma
 import os
 import tarfile
+import zstandard
 
 from collections import defaultdict
 from gzip import GzipFile
@@ -41,11 +42,11 @@ class DpkgVersionError(DpkgError):
 
 
 class DpkgMissingControlFile(DpkgError):
-    """No control file found in control.tar.gz/xz"""
+    """No control file found in control.tar.gz/xz/zst"""
 
 
 class DpkgMissingControlGzipFile(DpkgError):
-    """No control.tar.gz/xz file found in dpkg file"""
+    """No control.tar.gz/xz/zst file found in dpkg file"""
 
 
 class DpkgMissingRequiredHeaderError(DpkgError):
@@ -308,6 +309,9 @@ class Dpkg():
         elif b'control.tar.xz' in dpkg_archive.archived_files:
             control_archive = dpkg_archive.archived_files[b'control.tar.xz']
             control_archive_type = "xz"
+        elif b'control.tar.zst' in dpkg_archive.archived_files:
+            control_archive = dpkg_archive.archived_files[b'control.tar.zst']
+            control_archive_type = "zst"
         else:
             raise DpkgMissingControlGzipFile(
                 'Corrupt dpkg file: no control.tar.gz/xz file in ar archive.')
@@ -318,6 +322,13 @@ class Dpkg():
                 self._log.debug('opened gzip control archive: %s', gzf)
                 with tarfile.open(fileobj=io.BytesIO(gzf.read())) as ctar:
                     self._log.debug('opened tar file: %s', ctar)
+                    message = self._extract_message(ctar)
+        elif control_archive_type == "zst":         
+                decomp = zstandard.ZstdDecompressor()
+                zst = decomp.stream_reader(control_archive)
+                self._log.debug("opened zst control archive: %s", zst)
+                with tarfile.open(fileobj=io.BytesIO(zst.read())) as ctar:
+                    self._log.debug("opened tar file: %s", ctar)
                     message = self._extract_message(ctar)
         else:
             with lzma.open(control_archive) as xzf:
